@@ -35,7 +35,7 @@ PALETTE = ['#0C5DA5', '#FF9500', '#00B945', '#FF2C00', '#845B97', '#9E9E9E',
 
 def set_style():
     plt.rcParams.update({
-        'font.size': 12,           # Increased from 10
+        'font.size': 10,           # Decreased from 12 as axis text was "too big"
         'font.family': 'serif',
         'figure.dpi': 300,
         'savefig.dpi': 300,
@@ -242,29 +242,29 @@ def plot_tradeoff():
 
     for name, (time_ms, util) in methods_data.items():
         c = new_baseline_colors.get(name, NATURE_COLORS['light_gray'])
-        ax.scatter(time_ms, util, c=c, s=50, zorder=2)
-        offset_x, offset_y = 3, 0.008
+        ax.scatter(time_ms, util, c=c, s=80, zorder=2)
+        offset_x, offset_y = 5, 0.01
         if name == 'DDPG-Offload':
-            offset_x = -55
+            offset_x = -75
         elif name == 'Oracle-3':
-            offset_x = -45
+            offset_x = -65
             offset_y = -0.02
         elif name == 'LP-Relaxed':
-            offset_x = 3
-            offset_y = -0.025
+            offset_x = 5
+            offset_y = -0.03
         elif name == 'AO-Joint':
-            offset_x = 3
-            offset_y = 0.012
-        ax.annotate(name, (time_ms, util), fontsize=5.5,
+            offset_x = 5
+            offset_y = 0.015
+        ax.annotate(name, (time_ms, util), fontsize=8.5,
                     xytext=(offset_x, offset_y), textcoords='offset points')
 
-    ax.scatter(*ours, c=NATURE_COLORS['blue'], s=200, marker='*', zorder=3)
-    ax.annotate('Ours', ours, fontsize=10, fontweight='bold',
-                xytext=(5, 8), textcoords='offset points', color=NATURE_COLORS['blue'])
+    ax.scatter(*ours, c=NATURE_COLORS['blue'], s=250, marker='*', zorder=3)
+    ax.annotate('Ours', ours, fontsize=11, fontweight='bold',
+                xytext=(6, 10), textcoords='offset points', color=NATURE_COLORS['blue'])
 
     # Slot budget line
-    ax.axvline(x=100, color=NATURE_COLORS['red'], linestyle=':', linewidth=1, alpha=0.6)
-    ax.text(105, 0.30, '100 ms\nslot budget', fontsize=6, color=NATURE_COLORS['red'], alpha=0.7)
+    ax.axvline(x=100, color=NATURE_COLORS['red'], linestyle=':', linewidth=1.5, alpha=0.6)
+    ax.text(105, 0.30, '100 ms\nslot budget', fontsize=8.5, color=NATURE_COLORS['red'], alpha=0.8)
 
     ax.set_xlabel('Per-Slot Time (ms)')
     ax.set_ylabel('Data Utility')
