@@ -71,7 +71,7 @@ def plot_convergence():
     def smooth(y, w=30):
         return np.convolve(y, np.ones(w)/w, mode='valid')
 
-    fig, ax = plt.subplots(figsize=(3.5, 2.5))
+    fig, ax = plt.subplots(figsize=(4.5, 3.2))
     ep_s = episodes[:len(smooth(ours))]
     ax.plot(ep_s, smooth(ours),   color=PALETTE[0], label='CoTDA')
     ax.plot(ep_s, smooth(ddpg),   color=PALETTE[1], label='DDPG-Offload', linestyle='--')
@@ -95,7 +95,7 @@ def plot_convergence():
 def plot_sensitivity():
     np.random.seed(123)
 
-    fig, axes = plt.subplots(1, 3, figsize=(7.16, 2.4))
+    fig, axes = plt.subplots(1, 3, figsize=(9.0, 3.0))
     methods = ['CoTDA', 'AoI-LGFS', 'Lyapunov-VEC', 'DDPG-Offload',
                'FedVeh', 'Greedy-AoI', 'Joint-Heuristic', 'AO-Joint', 'LP-Relaxed']
     colors  = [PALETTE[0], PALETTE[1], PALETTE[2], PALETTE[3],
@@ -176,8 +176,8 @@ def plot_sensitivity():
                           linewidth=1.2, label=m)
         handles.append(h)
         labels_list.append(m)
-    fig.legend(handles, labels_list, loc='upper center', ncol=3, fontsize=8,
-               bbox_to_anchor=(0.5, 1.25))
+    fig.legend(handles, labels_list, loc='upper center', ncol=3, fontsize=9,
+               bbox_to_anchor=(0.5, 1.28))
 
     plt.tight_layout()
     plt.subplots_adjust(top=0.74)
@@ -196,7 +196,7 @@ def plot_ablation_bar():
     drops    = [0.0, -0.109, -0.066, -0.084, -0.049]
     colors   = [NATURE_COLORS['blue']] + [NATURE_COLORS['red']] * 4
 
-    fig, ax = plt.subplots(figsize=(4, 2.5))
+    fig, ax = plt.subplots(figsize=(5.0, 3.2))
     bars = ax.barh(variants[::-1], utility[::-1],
                    color=colors[::-1], edgecolor='white', linewidth=0.5)
 
@@ -230,7 +230,7 @@ def plot_tradeoff():
     }
     ours = (38.4, 0.627)
 
-    fig, ax = plt.subplots(figsize=(4.5, 2.8))
+    fig, ax = plt.subplots(figsize=(5.5, 3.8))
 
     # Color-code: external baselines gray, our new baselines teal/brown/pink
     new_baseline_colors = {
@@ -299,7 +299,7 @@ def plot_trust_evolution():
     corrupt_upper = np.clip(corrupt + 0.05, 0, 1)
     corrupt_lower = np.clip(corrupt - 0.05, 0, 1)
 
-    fig, ax = plt.subplots(figsize=(3.5, 2.5))
+    fig, ax = plt.subplots(figsize=(4.5, 3.2))
     ax.fill_between(slots, honest_lower, honest_upper,
                     alpha=0.15, color=NATURE_COLORS['blue'])
     ax.plot(slots, honest, color=NATURE_COLORS['blue'], label='Honest agents')
