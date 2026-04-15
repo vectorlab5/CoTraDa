@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Generate synthetic experimental charts for CooperativeTrafficData planning draft.
+Generate synthetic experimental charts for CoTDA planning draft.
 IMPORTANT: These are for PLANNING ONLY. Replace with real data before submission.
 
 Generates:
@@ -35,7 +35,7 @@ PALETTE = ['#0C5DA5', '#FF9500', '#00B945', '#FF2C00', '#845B97', '#9E9E9E',
 
 def set_style():
     plt.rcParams.update({
-        'font.size': 10,
+        'font.size': 12,           # Increased from 10
         'font.family': 'serif',
         'figure.dpi': 300,
         'savefig.dpi': 300,
@@ -45,7 +45,7 @@ def set_style():
         'axes.spines.top': False,
         'axes.spines.right': False,
         'legend.frameon': False,
-        'lines.linewidth': 1.5,
+        'lines.linewidth': 2.0,    # Increased from 1.5
     })
 
 set_style()
@@ -73,16 +73,16 @@ def plot_convergence():
 
     fig, ax = plt.subplots(figsize=(3.5, 2.5))
     ep_s = episodes[:len(smooth(ours))]
-    ax.plot(ep_s, smooth(ours),   color=PALETTE[0], label='CooperativeTrafficData')
+    ax.plot(ep_s, smooth(ours),   color=PALETTE[0], label='CoTDA')
     ax.plot(ep_s, smooth(ddpg),   color=PALETTE[1], label='DDPG-Offload', linestyle='--')
     ax.plot(ep_s, smooth(fedveh), color=PALETTE[4], label='FedVeh', linestyle='-.')
     # Lyapunov horizontal
     ax.axhline(y=6.4, color=PALETTE[2], linestyle=':', linewidth=1.2, label='Lyapunov-VEC')
 
-    ax.set_xlabel('Episode')
-    ax.set_ylabel('Episodic Reward')
+    ax.set_xlabel('Episode', fontsize=11)
+    ax.set_ylabel('Episodic Reward', fontsize=11)
     ax.set_xlim(0, 2000)
-    ax.legend(fontsize=7, loc='lower right')
+    ax.legend(fontsize=9, loc='lower right')
     plt.tight_layout()
     plt.savefig(os.path.join(OUT_DIR, 'convergence.pdf'))
     plt.close()
@@ -96,7 +96,7 @@ def plot_sensitivity():
     np.random.seed(123)
 
     fig, axes = plt.subplots(1, 3, figsize=(7.16, 2.4))
-    methods = ['CooperativeTrafficData', 'AoI-LGFS', 'Lyapunov-VEC', 'DDPG-Offload',
+    methods = ['CoTDA', 'AoI-LGFS', 'Lyapunov-VEC', 'DDPG-Offload',
                'FedVeh', 'Greedy-AoI', 'Joint-Heuristic', 'AO-Joint', 'LP-Relaxed']
     colors  = [PALETTE[0], PALETTE[1], PALETTE[2], PALETTE[3],
                PALETTE[4], PALETTE[5], PALETTE[6], PALETTE[8], PALETTE[7]]
@@ -105,7 +105,7 @@ def plot_sensitivity():
     # (a) W-AoI vs Vehicle count
     V_vals = [10, 20, 30, 40, 50, 60, 70]
     base_aoi = {
-        'CooperativeTrafficData': [3.41, 3.92, 4.51, 5.12, 5.68, 6.21, 6.82],
+        'CoTDA': [3.41, 3.92, 4.51, 5.12, 5.68, 6.21, 6.82],
         'AoI-LGFS':              [4.18, 4.89, 5.72, 6.43, 7.18, 7.91, 8.59],
         'Lyapunov-VEC':          [4.52, 5.31, 6.15, 6.89, 7.74, 8.42, 9.13],
         'DDPG-Offload':          [5.21, 5.92, 6.78, 7.51, 8.23, 8.97, 9.64],
@@ -119,15 +119,15 @@ def plot_sensitivity():
     for i, m in enumerate(methods):
         jitter = np.random.normal(0, 0.08, len(V_vals))
         ax.plot(V_vals, np.array(base_aoi[m]) + jitter, color=colors[i],
-                marker=markers[i], markersize=3.5, linewidth=1.2)
-    ax.set_xlabel('Number of Vehicles $V$')
-    ax.set_ylabel('Weighted AoI (slots)')
-    ax.set_title('(a)', fontsize=9, loc='left')
+                marker=markers[i], markersize=5, linewidth=1.5)
+    ax.set_xlabel('Number of Vehicles $V$', fontsize=10)
+    ax.set_ylabel('Weighted AoI (slots)', fontsize=10)
+    ax.set_title('(a)', fontsize=11, loc='left')
 
     # (b) Utility vs Bandwidth
     bw_vals = [5, 10, 15, 20, 25, 30, 35, 40]
     base_util = {
-        'CooperativeTrafficData': [0.48, 0.56, 0.60, 0.63, 0.65, 0.66, 0.66, 0.67],
+        'CoTDA': [0.48, 0.56, 0.60, 0.63, 0.65, 0.66, 0.66, 0.67],
         'AoI-LGFS':              [0.32, 0.40, 0.46, 0.50, 0.53, 0.55, 0.57, 0.59],
         'Lyapunov-VEC':          [0.29, 0.37, 0.43, 0.47, 0.51, 0.54, 0.56, 0.59],
         'DDPG-Offload':          [0.26, 0.34, 0.39, 0.43, 0.47, 0.50, 0.53, 0.55],
@@ -141,15 +141,15 @@ def plot_sensitivity():
     for i, m in enumerate(methods):
         jitter = np.random.normal(0, 0.005, len(bw_vals))
         ax.plot(bw_vals, np.array(base_util[m]) + jitter, color=colors[i],
-                marker=markers[i], markersize=3.5, linewidth=1.2)
-    ax.set_xlabel('Per-RSU Bandwidth (MHz)')
-    ax.set_ylabel('Data Utility')
-    ax.set_title('(b)', fontsize=9, loc='left')
+                marker=markers[i], markersize=5, linewidth=1.5)
+    ax.set_xlabel('Per-RSU Bandwidth (MHz)', fontsize=10)
+    ax.set_ylabel('Data Utility', fontsize=10)
+    ax.set_title('(b)', fontsize=11, loc='left')
 
     # (c) Delivery Ratio vs Link Failure Prob
     fail_vals = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4]
     base_del = {
-        'CooperativeTrafficData': [93.1, 91.2, 88.7, 86.1, 83.2, 81.4, 79.6, 77.1, 74.8],
+        'CoTDA': [93.1, 91.2, 88.7, 86.1, 83.2, 81.4, 79.6, 77.1, 74.8],
         'AoI-LGFS':              [88.1, 85.3, 82.1, 78.4, 74.7, 71.2, 67.8, 64.1, 60.3],
         'Lyapunov-VEC':          [85.4, 82.1, 78.5, 74.2, 70.3, 66.8, 63.2, 59.4, 55.7],
         'DDPG-Offload':          [85.4, 82.0, 77.8, 73.4, 69.1, 65.2, 61.7, 59.8, 58.2],
@@ -163,10 +163,10 @@ def plot_sensitivity():
     for i, m in enumerate(methods):
         jitter = np.random.normal(0, 0.4, len(fail_vals))
         ax.plot(fail_vals, np.array(base_del[m]) + jitter, color=colors[i],
-                marker=markers[i], markersize=3.5, linewidth=1.2)
-    ax.set_xlabel('Link Failure Probability')
-    ax.set_ylabel('Delivery Ratio (%)')
-    ax.set_title('(c)', fontsize=9, loc='left')
+                marker=markers[i], markersize=5, linewidth=1.5)
+    ax.set_xlabel('Link Failure Probability', fontsize=10)
+    ax.set_ylabel('Delivery Ratio (%)', fontsize=10)
+    ax.set_title('(c)', fontsize=11, loc='left')
 
     # Shared legend at top
     handles = []
@@ -176,8 +176,8 @@ def plot_sensitivity():
                           linewidth=1.2, label=m)
         handles.append(h)
         labels_list.append(m)
-    fig.legend(handles, labels_list, loc='upper center', ncol=5, fontsize=5.5,
-               bbox_to_anchor=(0.5, 1.14))
+    fig.legend(handles, labels_list, loc='upper center', ncol=3, fontsize=8,
+               bbox_to_anchor=(0.5, 1.25))
 
     plt.tight_layout()
     plt.subplots_adjust(top=0.74)
@@ -258,9 +258,9 @@ def plot_tradeoff():
         ax.annotate(name, (time_ms, util), fontsize=5.5,
                     xytext=(offset_x, offset_y), textcoords='offset points')
 
-    ax.scatter(*ours, c=NATURE_COLORS['blue'], s=150, marker='*', zorder=3)
-    ax.annotate('Ours', ours, fontsize=8, fontweight='bold',
-                xytext=(4, 6), textcoords='offset points', color=NATURE_COLORS['blue'])
+    ax.scatter(*ours, c=NATURE_COLORS['blue'], s=200, marker='*', zorder=3)
+    ax.annotate('Ours', ours, fontsize=10, fontweight='bold',
+                xytext=(5, 8), textcoords='offset points', color=NATURE_COLORS['blue'])
 
     # Slot budget line
     ax.axvline(x=100, color=NATURE_COLORS['red'], linestyle=':', linewidth=1, alpha=0.6)
@@ -329,7 +329,7 @@ def plot_trust_evolution():
 # MAIN
 # ============================================================
 if __name__ == '__main__':
-    print("Generating SYNTHETIC charts for CooperativeTrafficData planning draft...")
+    print("Generating SYNTHETIC charts for CoTDA planning draft...")
     print("WARNING: Replace with real data before submission!")
     print("-" * 55)
 

@@ -19,7 +19,7 @@ np.random.seed(42)
 
 # ── Nature-journal color palette (matches main figure script) ──
 COLORS = {
-    'CooperativeTrafficData': '#E64B35',
+    'CoTDA': '#E64B35',
     'AO-Joint': '#4DBBD5',
     'LP-Relaxed': '#00A087',
     'Joint-Heuristic': '#3C5488',
@@ -126,11 +126,11 @@ print(f"  Vehicle types: {type_counts}")
 # - Slightly lower absolute performance due to real-world traffic complexity
 # - Wider CIs due to natural traffic variability
 # - Same ranking among methods
-# - CooperativeTrafficData advantage slightly larger (real traffic rewards adaptivity)
+# - CoTDA advantage slightly larger (real traffic rewards adaptivity)
 
 methods = [
     'Greedy-AoI', 'DDPG-Offload', 'Lyapunov-VEC', 'AoI-LGFS', 'FedVeh',
-    'Joint-Heuristic', 'AO-Joint', 'LP-Relaxed', 'Oracle-3', 'CooperativeTrafficData'
+    'Joint-Heuristic', 'AO-Joint', 'LP-Relaxed', 'Oracle-3', 'CoTDA'
 ]
 
 # Generate 10-seed results for each method
@@ -139,7 +139,7 @@ for method in methods:
     rng = np.random.RandomState(hash(method) % 2**31)
 
     # Base values calibrated to Urban-Small but adjusted for real traffic
-    if method == 'CooperativeTrafficData':
+    if method == 'CoTDA':
         waoi_base, util_base, dr_base = 3.41, 0.708, 93.2
     elif method == 'Oracle-3':
         waoi_base, util_base, dr_base = 3.22, 0.748, 95.1
@@ -301,8 +301,8 @@ print(f"Saved: {OUT_DIR}/pneuma_results.json")
 print("\n=== LaTeX Table Rows ===")
 for m in methods:
     r = results[m]
-    if m == 'CooperativeTrafficData':
-        prefix = r'\textbf{CooperativeTrafficData}'
+    if m == 'CoTDA':
+        prefix = r'\textbf{CoTDA}'
         waoi_fmt = f'$\\mathbf{{{r["waoi_mean"]:.2f}}}{{\\scriptstyle\\pm{r["waoi_ci"]:.2f}}}$'
         util_fmt = f'$\\mathbf{{{r["util_mean"]:.3f}}}{{\\scriptstyle\\pm{r["util_ci"]:.3f}}}$'
         dr_fmt = f'$\\mathbf{{{r["dr_mean"]:.1f}}}{{\\scriptstyle\\pm{r["dr_ci"]:.1f}}}$'

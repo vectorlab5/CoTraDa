@@ -13,6 +13,9 @@ from src.training.ppo import PPOConfig, ppo_update
 
 
 class Trainer:
+    """
+    Orchestrates the training process, linking the environment, model, and PPO updates.
+    """
     def __init__(self, config: dict, output_dir: Path):
         self.cfg = config
         self.output_dir = output_dir
@@ -30,6 +33,9 @@ class Trainer:
         self.best_reward = -1e9
 
     def _run_episode(self) -> dict:
+        """
+        Runs a single simulation episode, collecting rollouts for the policy update.
+        """
         slot_state = self.env.reset()
         self.model.reset_state()
         rollouts: list[RolloutStep] = []
@@ -43,8 +49,10 @@ class Trainer:
             "slot_time_ms": [],
         }
         for _ in range(int(self.cfg["experiment"]["slots_per_episode"])):
+            # Step through the logic: admission -> compression -> routing -> feedback
             actions, step_rollouts, info = self.model.forward_slot(slot_state, self.env.agent_relay)
             slot_state, env_metrics = self.env.step(actions)
+            
             rollouts.extend(step_rollouts)
             episode_metrics["reward"].append(info["reward"])
             episode_metrics["weighted_aoi"].append(info["weighted_aoi"])
@@ -54,20 +62,28 @@ class Trainer:
             episode_metrics["throughput_mbps"].append(env_metrics["throughput_mbps"])
             episode_metrics["avg_latency_ms"].append(env_metrics["avg_latency_ms"])
 
+        # Update the policy using the collected rollout data
         losses = ppo_update(self.model, self.optimizer, rollouts, self.ppo_cfg)
         out = {k: float(np.mean(v)) for k, v in episode_metrics.items()}
         out.update(losses)
         return out
 
     def train(self) -> Path:
+        """
+        Main training loop. Runs episodes and saves performance checkpoints.
+        """
         results = []
         n_episodes = int(self.cfg["experiment"]["episodes"])
         for ep in range(1, n_episodes + 1):
             metrics = self._run_episode()
             results.append({"episode": ep, **metrics})
+            
+            # Save the model if it hits a new high score
             if metrics["reward"] > self.best_reward:
                 self.best_reward = metrics["reward"]
                 self._save_checkpoint(self.output_dir / "checkpoints" / "best.pt", ep, metrics)
+            
+            # Print periodic progress updates to the console
             if ep % 10 == 0 or ep == 1:
                 self.logger.info(
                     "ep=%d reward=%.4f utility=%.4f w_aoi=%.4f del=%.3f slot=%.2fms",
@@ -78,6 +94,8 @@ class Trainer:
                     metrics["delivery_ratio"],
                     metrics["slot_time_ms"],
                 )
+        
+        # Save final state and export training history
         self._save_checkpoint(self.output_dir / "checkpoints" / "last.pt", n_episodes, results[-1])
         results_path = self.output_dir / "results" / "train_metrics.json"
         results_path.parent.mkdir(parents=True, exist_ok=True)
@@ -85,6 +103,9 @@ class Trainer:
         return results_path
 
     def _save_checkpoint(self, path: Path, episode: int, metrics: dict) -> None:
+        """
+        Dumps the model weights, optimizer state, and config to a file.
+        """
         path.parent.mkdir(parents=True, exist_ok=True)
         torch.save(
             {

@@ -15,7 +15,8 @@ from src.data.simulator import SlotState
 @dataclass
 class RolloutStep:
     obs: torch.Tensor
-    action: torch.Tensor
+    action_adm: torch.Tensor
+    action_rho: torch.Tensor
     logprob: torch.Tensor
     value: torch.Tensor
     reward: float
@@ -55,9 +56,8 @@ class CooperativeTrafficData(nn.Module):
         self.max_hops = int(model_cfg["max_hops"])
         self.threshold_payload_bits = float(model_cfg["threshold_payload_bits"])
         self.rho_candidates = [float(x) for x in model_cfg["rho_candidates"]]
-        self.w_q = nn.Parameter(torch.eye(self.feature_dim))
-        self.q_network = MLP(self.feature_dim * 2 + 2, policy_cfg["q_hidden_dims"], 1)
-        self.actor = MLP(self.feature_dim * 2 + 2, policy_cfg["hidden_dims"], len(self.rho_candidates))
+        self.w_q = nn.Parameter(torch.randn(self.feature_dim, self.feature_dim) * 0.01)
+        self.actor = MLP(self.feature_dim * 2 + 2, policy_cfg["hidden_dims"], 1 + len(self.rho_candidates))
         self.critic = MLP(self.feature_dim * 2 + 2, policy_cfg["hidden_dims"], 1)
         self.projectors = nn.ModuleDict()
         for rho in self.rho_candidates:
@@ -77,6 +77,8 @@ class CooperativeTrafficData(nn.Module):
         self.global_context: np.ndarray | None = None
         self.trust_scores: np.ndarray | None = None
         self.dual_vars: Dict[tuple[str, str], float] = {}
+        self.prev_capacities: Dict[tuple[str, str], float] = {}
+        self.phi_warmstart = 0.1
 
     def _ensure_state(self, num_agents: int) -> None:
         if self.global_context is None:
@@ -92,29 +94,51 @@ class CooperativeTrafficData(nn.Module):
             axis=1,
         ).astype(np.float32)
 
-    def _admission(self, slot: SlotState, obs: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        obs_t = torch.from_numpy(obs)
-        content_logits = self.q_network(obs_t).squeeze(-1).detach().numpy()
+    def _admission_and_compression(self, slot: SlotState, obs: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Jointly samples admission and compression actions for the PPO training loop.
+        """
+        obs_t = torch.from_numpy(obs).float()
+        features_t = torch.from_numpy(slot.features).float()
+        global_ctx_t = torch.from_numpy(self.global_context).float()
+
+        # Alignment score using a learned bilinear mapping (w_q) between vehicle features and global context.
+        alignment_score = torch.sigmoid(torch.matmul(torch.matmul(features_t, self.w_q), global_ctx_t))
+        
+        # Policy network outputs
+        out = self.actor(obs_t)
+        adm_logits = out[:, 0]
+        rho_logits = out[:, 1:]
+        
+        # Decide which agents are admitted (stochastic)
+        adm_dist = torch.distributions.Bernoulli(logits=adm_logits)
+        admitted_t = adm_dist.sample()
+        adm_logprob = adm_dist.log_prob(admitted_t)
+        
+        # Decide which compression ratio to use (stochastic)
+        rho_dist = torch.distributions.Categorical(logits=rho_logits)
+        rho_action = rho_dist.sample()
+        rho_logprob = rho_dist.log_prob(rho_action)
+        
+        # Critic value for GAE calculation
+        value = self.critic(obs_t).squeeze(-1)
+        
+        # Sync back to numpy for the simulator
+        admitted = admitted_t.detach().numpy().astype(np.int32)
+        rho_idx = rho_action.detach().numpy()
+        rho = np.array([self.rho_candidates[i] for i in rho_idx], dtype=np.float32)
+        rho[admitted == 0] = 0.0
+        
+        # Total log probability for PPO clipped update
+        total_logprob = adm_logprob + rho_logprob
+        
+        # Tracking scoring for analytics (urgency and compute cost weights)
         urgency = 1.0 - np.exp(-self.alpha * slot.aoi)
         expected_rho = 0.5
         comp_cost = expected_rho * (self.feature_dim / np.maximum(slot.compute_budget, 1e-3))
-        q_values = urgency * self.trust_scores * (1.0 / (1.0 + np.exp(-content_logits))) - self.beta_cost * comp_cost
-        est_capacity_agents = max(1.0, sum(slot.link_capacity.values()) / self.threshold_payload_bits)
-        threshold = float(np.sum(q_values) / est_capacity_agents)
-        admitted = (q_values >= threshold).astype(np.int32)
-        return admitted, q_values, np.array([threshold], dtype=np.float32)
-
-    def _select_compression(self, obs: np.ndarray, admitted: np.ndarray) -> tuple[np.ndarray, np.ndarray, torch.Tensor, torch.Tensor]:
-        obs_t = torch.from_numpy(obs)
-        logits = self.actor(obs_t)
-        dist = torch.distributions.Categorical(logits=logits)
-        action = dist.sample()
-        logprob = dist.log_prob(action)
-        value = self.critic(obs_t).squeeze(-1)
-        action_np = action.detach().numpy()
-        rho = np.array([self.rho_candidates[i] for i in action_np], dtype=np.float32)
-        rho[admitted == 0] = 0.0
-        return rho, action_np, logprob, value
+        q_values = urgency * self.trust_scores * alignment_score.detach().numpy() - self.beta_cost * comp_cost
+        
+        return admitted, rho, rho_idx, total_logprob, value, q_values
 
     def _routing(
         self,
@@ -122,13 +146,24 @@ class CooperativeTrafficData(nn.Module):
         admitted: np.ndarray,
         rho: np.ndarray,
         agent_relay: np.ndarray,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Multi-hop path assignment using Lagrangian relaxation and dual warm-starts.
+        Updates dual variables locally to respect link capacities.
+        """
         g = nx.Graph()
         for edge, cap in slot.link_capacity.items():
             rel = slot.link_reliability[edge]
             u, v = edge
-            dual = self.dual_vars.get(edge, 0.0)
-            g.add_edge(u, v, cap=cap, rel=rel, dual=dual)
+
+            # Adjust starting duals based on predicted load changes (Warm-start)
+            prev_cap = self.prev_capacities.get(edge, cap)
+            mu = self.dual_vars.get(edge, 0.0)
+            mu = max(0.0, mu + self.phi_warmstart * (cap - prev_cap))
+            self.dual_vars[edge] = mu
+
+            g.add_edge(u, v, cap=cap, rel=rel, dual=mu)
+
         payload = self.feature_dim * (1.0 - rho)
         delivery_success = np.zeros_like(admitted)
         latency_slots = np.ones_like(admitted)
@@ -140,34 +175,43 @@ class CooperativeTrafficData(nn.Module):
             edge_load = {edge: 0.0 for edge in slot.link_capacity}
             for agent_idx in np.where(admitted == 1)[0]:
                 src = f"relay_{agent_relay[agent_idx]}"
+                # Inner subproblem: Find the best paths using penalized link costs
                 for u, v, data in g.edges(data=True):
-                    edge = tuple(sorted((u, v)))
-                    trust_hop = 0.8 if "relay" in u and "relay" in v else 1.0
-                    raw_cost = data["dual"] * payload[agent_idx] - data["rel"] * np.log(1.0 + data["cap"]) + self.lambda_pi * (
-                        1.0 - trust_hop
-                    )
-                    # Dijkstra requires non-negative edge weights.
-                    data["weight"] = float(max(1e-6, raw_cost + 10.0))
+                    # Combine reliability, capacity, congestion (dual), and relay trust factor.
+                    trust_hop = 0.8  
+                    link_cost = (data["dual"] * payload[agent_idx] -
+                                 data["rel"] * np.log(1.0 + data["cap"]) +
+                                 self.lambda_pi * (1.0 - trust_hop))
+                    # Weights must be non-negative for Dijkstra.
+                    data["weight"] = float(max(1e-6, link_cost + 10.0))
+
                 try:
                     path = nx.shortest_path(g, source=src, target="fusion", weight="weight")
-                except nx.NetworkXNoPath:
-                    continue
-                path_edges = [tuple(sorted((path[i], path[i + 1]))) for i in range(len(path) - 1)]
-                cap_min = min(slot.link_capacity[e] for e in path_edges)
-                rel_prod = np.prod([slot.link_reliability[e] for e in path_edges])
-                delivery_success[agent_idx] = int(rel_prod > 0.4 and payload[agent_idx] <= cap_min)
-                latency_slots[agent_idx] = min(self.max_hops, len(path_edges))
-                path_utils[agent_idx] = sum(slot.link_reliability[e] * np.log(1.0 + slot.link_capacity[e]) for e in path_edges)
-                provenance[agent_idx] = sum((1.0 - 0.8) for _ in path_edges)
-                for e in path_edges:
-                    edge_load[e] += payload[agent_idx]
+                    path_edges = [tuple(sorted((path[i], path[i + 1]))) for i in range(len(path) - 1)]
+                    rel_prod = np.prod([slot.link_reliability[e] for e in path_edges])
 
+                    # Mark delivery as successful if cumulative reliability and capacity clear.
+                    min_cap = min(slot.link_capacity[e] for e in path_edges)
+                    delivery_success[agent_idx] = int(rel_prod > 0.4 and payload[agent_idx] <= min_cap)
+
+                    latency_slots[agent_idx] = len(path_edges)
+                    path_utils[agent_idx] = sum(slot.link_reliability[e] * np.log(1.0 + slot.link_capacity[e]) for e in path_edges)
+                    provenance[agent_idx] = sum((1.0 - 0.8) for _ in path_edges)
+
+                    for e in path_edges:
+                        edge_load[e] += payload[agent_idx]
+                except (nx.NetworkXNoPath, nx.NodeNotFound):
+                    continue
+
+            # Update dual shadow prices based on bandwidth violations.
             for edge in slot.link_capacity:
-                mu = self.dual_vars.get(edge, 0.0)
+                mu = self.dual_vars[edge]
                 mu = max(0.0, mu + self.dual_step_size * (edge_load[edge] - slot.link_capacity[edge]))
                 self.dual_vars[edge] = mu
                 if g.has_edge(*edge):
                     g.edges[edge]["dual"] = mu
+
+        self.prev_capacities = slot.link_capacity.copy()
         slot_ms = (time.perf_counter() - start) * 1000.0
         return delivery_success, latency_slots, path_utils, provenance, np.array([slot_ms], dtype=np.float32)
 
@@ -198,8 +242,7 @@ class CooperativeTrafficData(nn.Module):
 
     def forward_slot(self, slot: SlotState, agent_relay: np.ndarray) -> tuple[dict, List[RolloutStep], dict]:
         obs = self._build_obs(slot)
-        admitted, q_values, threshold = self._admission(slot, obs)
-        rho, action_idx, logprob, value = self._select_compression(obs, admitted)
+        admitted, rho, rho_idx, logprob, value, q_values = self._admission_and_compression(slot, obs)
         delivery_success, latency_slots, path_utils, provenance, slot_time_ms = self._routing(slot, admitted, rho, agent_relay)
 
         freshness = np.exp(-self.alpha * slot.aoi)
@@ -208,12 +251,13 @@ class CooperativeTrafficData(nn.Module):
         self._update_feedback(slot, admitted, delivery_success, rho)
 
         rollouts = []
-        obs_t = torch.from_numpy(obs)
+        obs_t = torch.from_numpy(obs).float()
         for i in range(obs.shape[0]):
             rollouts.append(
                 RolloutStep(
                     obs=obs_t[i],
-                    action=torch.tensor(action_idx[i], dtype=torch.long),
+                    action_adm=torch.tensor(admitted[i], dtype=torch.float32),
+                    action_rho=torch.tensor(rho_idx[i], dtype=torch.long),
                     logprob=logprob[i].detach(),
                     value=value[i].detach(),
                     reward=reward,
@@ -233,7 +277,6 @@ class CooperativeTrafficData(nn.Module):
             "data_utility": float(np.mean(utility)),
             "slot_time_ms": float(slot_time_ms[0]),
             "admitted_count": int(admitted.sum()),
-            "threshold": float(threshold[0]),
             "avg_q": float(np.mean(q_values)),
         }
         return actions, rollouts, info
