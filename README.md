@@ -69,16 +69,5 @@ The experiments utilize two main data sources:
 -   NumPy, Matplotlib, NetworkX, PyYAML
 -   SUMO 1.18+ (for synthetic trace generation)
 
-## Citations
-If you use this code or dataset in your research, please cite:
-```bibtex
-@article{CoTDA2026,
-  title={Cross-Layer Coordination for Fresh and Reliable Data Acquisition in Smart Transportation Systems},
-  author={Xia, S. and Zhang, B. and Tai, J.},
-  journal={Academic Manuscript},
-  year={2026}
-}
-```
-
 ## License
 This project is released under the **MIT License**. SUMO is used under the EPL v2 license.
