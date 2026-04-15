@@ -95,7 +95,7 @@ def plot_convergence():
 def plot_sensitivity():
     np.random.seed(123)
 
-    fig, axes = plt.subplots(1, 3, figsize=(9.0, 3.0))
+    fig, axes = plt.subplots(1, 3, figsize=(8.0, 2.8))
     methods = ['CoTDA', 'AoI-LGFS', 'Lyapunov-VEC', 'DDPG-Offload',
                'FedVeh', 'Greedy-AoI', 'Joint-Heuristic', 'AO-Joint', 'LP-Relaxed']
     colors  = [PALETTE[0], PALETTE[1], PALETTE[2], PALETTE[3],
